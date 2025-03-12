@@ -9,16 +9,6 @@ import secrets
 class TokenService:
     @staticmethod
     def create_access_token(email: str, expires_delta: Optional[timedelta] = None) -> str:
-        """
-        Create a JWT access token.
-        
-        Args:
-            email: User's email
-            expires_delta: Optional expiration time delta
-            
-        Returns:
-            str: The encoded JWT token
-        """
         to_encode = {"sub": email}
         
         if expires_delta:
@@ -43,18 +33,6 @@ class TokenService:
     
     @staticmethod
     def verify_token(token: str) -> TokenData:
-        """
-        Verify a JWT token and return the token data.
-        
-        Args:
-            token: The JWT token to verify
-            
-        Returns:
-            TokenData: The decoded token data
-            
-        Raises:
-            HTTPException: If token is invalid or expired
-        """
         try:
             # Decode JWT token
             payload = jwt.decode(
@@ -96,10 +74,5 @@ class TokenService:
 
     @staticmethod
     def create_state_token() -> str:
-        """
-        Create a secure random state token for CSRF protection.
-        
-        Returns:
-            str: A random state token
-        """
+
         return secrets.token_urlsafe(32) 

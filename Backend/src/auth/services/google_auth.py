@@ -13,19 +13,7 @@ logger = logging.getLogger(__name__)
 class GoogleAuthService:
     @staticmethod
     async def get_user_info(code: str, callback_url: str) -> dict:
-        """
-        Get user information from Google using the authorization code.
-        
-        Args:
-            code: Google OAuth2 authorization code
-            callback_url: The callback URL used in the login request
-            
-        Returns:
-            dict: User information from Google
-            
-        Raises:
-            HTTPException: If token exchange fails
-        """
+       
         try:
             # Exchange code for tokens
             token_url = "https://oauth2.googleapis.com/token"

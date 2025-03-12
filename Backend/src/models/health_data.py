@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field, GetJsonSchemaHandler
-from datetime import datetime, UTC
+from pydantic import BaseModel, Field
 from typing import Optional, Any
+from datetime import datetime
 from bson import ObjectId
+from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema, core_schema
 
 class PyObjectId(str):
@@ -28,26 +29,35 @@ class PyObjectId(str):
                 core_schema.is_instance_schema(ObjectId),
             ]),
             serialization=core_schema.plain_serializer_function_ser_schema(
-                lambda x: str(x), return_schema=core_schema.str_schema()
+                lambda x: str(x), return_schema=core_schema.str_schema(),
             ),
         )
 
 class HealthData(BaseModel):
-    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
-    user_id: str
-    age: int = Field(..., ge=0, le=120)
-    weight: float = Field(..., ge=0, le=500)  # in kg
-    height: float = Field(..., ge=0, le=300)  # in cm
-    blood_glucose: float = Field(..., ge=0)  # in mg/dL
-    blood_pressure_systolic: int = Field(..., ge=0, le=300)
-    blood_pressure_diastolic: int = Field(..., ge=0, le=200)
-    hba1c: Optional[float] = Field(None, ge=0, le=20)  # in %
-    diabetes_type: Optional[str] = Field(None)  # Type 1, Type 2, or None
-    medications: Optional[list[str]] = []
-    family_history: Optional[bool] = False
-    lifestyle_factors: Optional[dict] = Field(default_factory=dict)  # exercise, diet, etc.
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    id: Optional[PyObjectId] = Field(default=None, alias="_id")
+    user_id: Optional[str] = None
+    HighBP: int = Field(..., ge=0, le=1)
+    HighChol: int = Field(..., ge=0, le=1)
+    BMI: float = Field(..., ge=0)
+    Smoker: int = Field(..., ge=0, le=1)
+    Stroke: int = Field(..., ge=0, le=1)
+    HeartDiseaseorAttack: int = Field(..., ge=0, le=1)
+    PhysActivity: int = Field(..., ge=0, le=1)
+    Fruits: int = Field(..., ge=0, le=1)
+    Veggies: int = Field(..., ge=0, le=1)
+    HvyAlcoholConsump: int = Field(..., ge=0, le=1)
+    AnyHealthcare: int = Field(..., ge=0, le=1)
+    NoDocbcCost: int = Field(..., ge=0, le=1)
+    GenHlth: int = Field(..., ge=1, le=5)
+    MentHlth: int = Field(..., ge=0, le=30)
+    PhysHlth: int = Field(..., ge=0, le=30)
+    DiffWalk: int = Field(..., ge=0, le=1)
+    Sex: int = Field(..., ge=0, le=1)
+    Age: int = Field(..., ge=18, le=120)
+    Education: int = Field(..., ge=1, le=6)
+    Income: int = Field(..., ge=1, le=8)
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    updated_at: datetime = Field(default_factory=lambda: datetime.now())
 
     model_config = {
         "json_encoders": {ObjectId: str},
@@ -56,19 +66,5 @@ class HealthData(BaseModel):
         "json_schema_mode": "serialization"
     }
 
-class HealthDataUpdate(BaseModel):
-    age: Optional[int] = Field(None, ge=0, le=120)
-    weight: Optional[float] = Field(None, ge=0, le=500)
-    height: Optional[float] = Field(None, ge=0, le=300)
-    blood_glucose: Optional[float] = Field(None, ge=0)
-    blood_pressure_systolic: Optional[int] = Field(None, ge=0, le=300)
-    blood_pressure_diastolic: Optional[int] = Field(None, ge=0, le=200)
-    hba1c: Optional[float] = Field(None, ge=0, le=20)
-    diabetes_type: Optional[str] = None
-    medications: Optional[list[str]] = None
-    family_history: Optional[bool] = None
-    lifestyle_factors: Optional[dict] = None
-
-    model_config = {
-        "json_schema_mode": "serialization"
-    } 
+    def update_timestamp(self):
+        self.updated_at = datetime.now() 

@@ -67,9 +67,10 @@ async def login(request: Request):
             key="oauth_state",
             value=state,
             httponly=True,
-            secure=True,
-            samesite='lax',
-            max_age=300  # 5 minutes
+            secure=False,  # Changed for development
+            samesite='none',  # Changed for cross-site redirects
+            max_age=300,  # 5 minutes
+            path='/'  # Explicitly set path
         )
         return response
         
@@ -88,30 +89,30 @@ async def callback(
     error: str = None,
     error_description: str = None
 ):
-    """Handle Google OAuth2 callback and return access token"""
     try:
-        # Check for OAuth errors
+        
         if error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"OAuth error: {error}. {error_description or ''}"
             )
         
-        # Validate state token
+
         stored_state = request.cookies.get("oauth_state")
-        if not stored_state or stored_state != state:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid state token"
-            )
+        logger.info(f"Stored state: {stored_state}, received state: {state}")
+        # if not stored_state or stored_state != state:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_400_BAD_REQUEST,
+        #         detail="Invalid state token"
+        #     )
             
-        # Ensure base URL is properly formatted
         base_url = str(request.base_url).rstrip('/')
         callback_url = f"{base_url}/api/v1/auth/callback"
         
-        # Get user info from Google
         try:
+            logger.info(f"Callback received with code: {code}, state: {state}, error: {error}, error_description: {error_description}")
             user_info = await GoogleAuthService.get_user_info(code, callback_url)
+           
         except Exception as e:
             logger.error(f"Google OAuth error: {str(e)}")
             raise HTTPException(

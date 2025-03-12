@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from fastapi.openapi.utils import get_openapi
 from src.auth.utils import security
+from contextlib import asynccontextmanager
 
 from src.core.database import db
 from src.auth.routes.login import router as login_router
@@ -14,11 +15,20 @@ from src.auth.routes.signup import router as signup_router
 from src.api.health_data import router as health_router
 import os
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await db.connect_to_database()
+    yield
+    # Shutdown
+    await db.close_database_connection()
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    swagger_ui_parameters={"persistAuthorization": True}
+    swagger_ui_parameters={"persistAuthorization": True},
+    lifespan=lifespan
 )
 
 # CORS middleware
@@ -42,17 +52,17 @@ def custom_openapi():
     )
 
     # Add Bearer Auth security scheme
-    openapi_schema["components"] = {
-        "securitySchemes": {
-            "Authorization": {
-                "type": "http",
-                "scheme": "bearer"
-            }
-        }
-    }
+    # openapi_schema["components"] = {
+    #     "securitySchemes": {
+    #         "Authorization": {
+    #             "type": "http",
+    #             "scheme": "bearer"
+    #         }
+    #     }
+    # }
 
     # Apply security globally to all routes
-    openapi_schema["security"] = [{"Authorization": []}]
+    # openapi_schema["security"] = [{"Authorization": []}]
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
@@ -73,20 +83,19 @@ app.include_router(
     prefix=f"{settings.API_V1_STR}/auth",
     tags=["auth"]
 )
+
+# Create a separate router for prediction endpoint
+from fastapi import APIRouter
+predict_router = APIRouter()
+predict_router.include_router(health_router, prefix="", tags=["prediction"])
+
+# Mount authenticated health endpoints
 app.include_router(
     health_router,
     prefix=f"{settings.API_V1_STR}/health",
     tags=["health"],
     dependencies=[Depends(security)]
 )
-
-@app.on_event("startup")
-async def startup_event():
-    await db.connect_to_database()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await db.close_database_connection()
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
