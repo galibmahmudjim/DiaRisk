@@ -1,93 +1,130 @@
-from fastapi import APIRouter, HTTPException, status
+import joblib
+from fastapi import APIRouter, HTTPException, status, Depends
 import logging
 from pydantic import BaseModel, Field, ConfigDict
-import joblib
+import pickle
 import numpy as np
-from typing import Dict, Annotated
+
+from sklearn.preprocessing import StandardScaler
+from typing import Dict, Annotated, List
 import os
+import pandas as pd
+from src.core.database import db
+from src.auth.utils import get_current_user
+from src.models.user import User
+from src.models.prediction import Prediction, PredictionCreate
+from datetime import datetime
+from fastapi.security import OAuth2PasswordBearer
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Load the model at startup
+# Initialize model variables
+model = None
+scaler = None
+feature_names = None
+
 try:
-    model_path = './src/ml/models/diabetes_risk_model.joblib'
+    model_path = './src/ml/models/diaHealth_012.joblib'
     if not os.path.exists(model_path):
         logger.warning(f"Model file not found at {model_path}. Please run the training script first.")
-    else:   
-        model_data = joblib.load(model_path)
-        model = model_data['rf_model']
+    else:
+        logger.info(f"NumPy version: {np.__version__}")
+        logger.info("Loading model file...")
+        
+        with open(model_path, 'rb') as f:
+            model_data = joblib.load(f)
+            
+        model = model_data['model']
         scaler = model_data['scaler']
         feature_names = model_data['feature_names']
-        logger.info("Model loaded successfully")
+        
+        logger.info("Model components loaded successfully")
+        logger.info(f"Feature names: {model.key()}")
+        logger.info(f"Model type: {type(model)}")
+
+
+    
 except Exception as e:
-    logger.error(f"Error loading model: {str(e)}")
+    logger.error(f"Error in model initialization: {str(e)}")
+    logger.error(f"Error type: {type(e)}")
     model = None
     scaler = None
     feature_names = None
 
 class HealthDataInput(BaseModel):
     model_config = ConfigDict(title="Health Data Input")
-    HighBP: Annotated[int, Field(ge=0, le=1, description="High blood pressure (0=no, 1=yes)")]
-    HighChol: Annotated[int, Field(ge=0, le=1, description="High cholesterol (0=no, 1=yes)")]
-    BMI: Annotated[float, Field(ge=0, description="Body Mass Index")]
-    Smoker: Annotated[int, Field(ge=0, le=1, description="Smoking status (0=no, 1=yes)")]
-    Stroke: Annotated[int, Field(ge=0, le=1, description="Ever had a stroke (0=no, 1=yes)")]
-    HeartDiseaseorAttack: Annotated[int, Field(ge=0, le=1, description="Heart disease or attack (0=no, 1=yes)")]
-    PhysActivity: Annotated[int, Field(ge=0, le=1, description="Physical activity in past 30 days (0=no, 1=yes)")]
-    Fruits: Annotated[int, Field(ge=0, le=1, description="Consume fruit 1 or more times per day (0=no, 1=yes)")]
-    Veggies: Annotated[int, Field(ge=0, le=1, description="Consume vegetables 1 or more times per day (0=no, 1=yes)")]
-    HvyAlcoholConsump: Annotated[int, Field(ge=0, le=1, description="Heavy alcohol consumption (0=no, 1=yes)")]
-    AnyHealthcare: Annotated[int, Field(ge=0, le=1, description="Have any healthcare coverage (0=no, 1=yes)")]
-    NoDocbcCost: Annotated[int, Field(ge=0, le=1, description="Was there a time in the past 12 months when you needed to see a doctor but could not because of cost? (0=no, 1=yes)")]
-    GenHlth: Annotated[int, Field(ge=1, le=5, description="General health (1=excellent, 2=very good, 3=good, 4=fair, 5=poor)")]
-    CholCheck: Annotated[int, Field(ge=0, le=1, description="Have you ever had your blood cholesterol checked? (0=no, 1=yes)")]
-    MentHlth: Annotated[int, Field(ge=0, le=30, description="Days of poor mental health in past 30 days")]
-    PhysHlth: Annotated[int, Field(ge=0, le=30, description="Days of poor physical health in past 30 days")]
-    DiffWalk: Annotated[int, Field(ge=0, le=1, description="Do you have serious difficulty walking or climbing stairs? (0=no, 1=yes)")]
-    Sex: Annotated[int, Field(ge=0, le=1, description="Sex (0=female, 1=male)")]
-    Age: Annotated[int, Field(ge=18, le=120, description="Age in years")]
-    Education: Annotated[int, Field(ge=1, le=6, description="Education level (1=Never attended school, 2=Elementary, 3=Some high school, 4=High school graduate, 5=Some college or technical school, 6=College graduate)")]
-    Income: Annotated[int, Field(ge=1, le=8, description="Income level (1=less than $10,000, ..., 8=more than $75,000)")]
+    BMI: Annotated[float, Field(ge=0)]
+    Stroke: Annotated[int, Field(ge=0, le=1)]
+    HeartDiseaseorAttack: Annotated[int, Field(ge=0, le=1)]
+    Sex: Annotated[int, Field(ge=0, le=1)]
+    Age: Annotated[int, Field(ge=1, le=120)]
 
 class RiskPredictionResponse(BaseModel):
-
     model_config = ConfigDict(title="Risk Prediction Response")
     
     risk_probability: Annotated[float, Field(description="Probability of having diabetes (0-1)")]
     risk_level: Annotated[str, Field(description="Risk level classification (No Diabetes, Prediabetes, or Diabetes)")]
     confidence_score: Annotated[float, Field(description="Model's confidence in the prediction (0-1)")]
     feature_importance: Annotated[Dict[str, float], Field(description="Importance score of each feature in the prediction")]
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 @router.post(
-    "/predict"
+    "/predict",
+    response_model=RiskPredictionResponse,
+    summary="Predict Diabetes Risk",
+    description="Predicts diabetes risk based on input health data and returns risk assessment with feature importance."
 )
-async def predict_diabetes_risk(health_data: HealthDataInput):
-
-
+async def predict_diabetes_risk(
+    health_data: HealthDataInput,
+    current_user: User = Depends(get_current_user)
+):
     try:
         if not model or not scaler or not feature_names:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Model not loaded. Please ensure the model is trained and available."
             )
-            
-        # Convert input data to feature array
+        
+        # Convert input data to DataFrame with correct feature order
         input_data = np.array([[
-            getattr(health_data, feature) for feature in feature_names
+            health_data.BMI,
+            health_data.Stroke,
+            health_data.HeartDiseaseorAttack,
+            health_data.Sex,
+            health_data.Age
         ]])
+        input_data = pd.DataFrame(input_data, columns=feature_names)
+        X_test_match_lebel = pd.DataFrame()
+        X_test_match_lebel['BMI'] = input_data['BMI']
+        X_test_match_lebel['Stroke'] = input_data['Stroke']
+        X_test_match_lebel['HeartDiseaseorAttack'] = input_data['HeartDiseaseorAttack']
+        X_test_match_lebel['Sex'] = input_data['Sex']
+        X_test_match_lebel['Age'] = input_data['Age']
+        X_test_match_lebel = scaler.fit_transform(X_test_match_lebel)
+        # Scale the input data using pre-trained scaler
+        scaled_data = scaler.transform(X_test_match_lebel)
         
-        # Scale the input data
-        scaled_data = scaler.transform(input_data)
-        
-        # Get prediction probabilities
+        # Get prediction probabilities from model
+        predictions = model.predict(scaled_data)
         probabilities = model.predict_proba(scaled_data)[0]
         
         # Get feature importance
-        feature_importance = dict(zip(feature_names, 
-                                    model.feature_importances_))
+        estimators = model.estimators_
+        if len(estimators) > 0 and hasattr(estimators[0], 'feature_importances_'):
+            feature_importance = dict(zip(feature_names, estimators[0].feature_importances_))
+        else:
+            feature_importance = dict(zip(feature_names, [1.0/len(feature_names)] * len(feature_names)))
+        
+        # Sort feature importance by value
+        feature_importance = dict(sorted(
+            feature_importance.items(),
+            key=lambda x: x[1],
+            reverse=True
+        ))
         
         # Determine risk level
         max_prob_idx = np.argmax(probabilities)
@@ -100,11 +137,27 @@ async def predict_diabetes_risk(health_data: HealthDataInput):
         # Get probability for the highest risk (diabetes)
         risk_probability = float(probabilities[2])  # Probability for class 2 (Diabetes)
         
+        # Create prediction result
+        prediction = PredictionCreate(
+            user_id=str(current_user.id),
+            risk_probability=risk_probability,
+            risk_level=risk_level,
+            confidence_score=confidence_score,
+            feature_importance=feature_importance,
+            input_data=health_data.model_dump()
+        )
+        
+        # Store prediction in database
+        result = await db.get_database().predictions.insert_one(
+            prediction.model_dump(by_alias=True)
+        )
+        
         return RiskPredictionResponse(
             risk_probability=risk_probability,
             risk_level=risk_level,
             confidence_score=confidence_score,
-            feature_importance=feature_importance
+            feature_importance=feature_importance,
+            created_at=prediction.created_at
         )
         
     except Exception as e:
@@ -112,4 +165,30 @@ async def predict_diabetes_risk(health_data: HealthDataInput):
         raise HTTPException(
             status_code=500,
             detail=f"Error predicting diabetes risk: {str(e)}"
+        )
+
+@router.get(
+    "/predictions",
+    response_model=List[Prediction],
+    summary="Get Prediction History",
+    description="Retrieves all previous predictions for the current user."
+)
+async def get_prediction_history(current_user: User = Depends(get_current_user)):
+    try:
+        # Get predictions for current user
+        cursor = db.get_database().predictions.find(
+            {"user_id": str(current_user.id)}
+        ).sort("created_at", -1)  # Sort by newest first
+        
+        predictions = []
+        async for doc in cursor:
+            predictions.append(Prediction.from_mongo(doc))
+            
+        return predictions
+        
+    except Exception as e:
+        logger.error(f"Error retrieving prediction history: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving prediction history: {str(e)}"
         ) 
