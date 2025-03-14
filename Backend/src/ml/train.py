@@ -86,10 +86,13 @@ def train_model():
     # Scale the features
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X)
-    X_train_scaled = pd.DataFrame(X_train_scaled, columns=X.columns)
-    print(X_train_scaled.columns)
-    ensemble_model = create_ensemble_model(X_train_scaled, y)
-    ensemble_model.fit(X_train_scaled, y)
+    # Convert to DataFrame to preserve feature names
+    X_train_scaled_df = pd.DataFrame(X_train_scaled, columns=X.columns)
+    
+    # Create and train ensemble model
+    ensemble_model = create_ensemble_model(X_train_scaled_df, y)
+    ensemble_model.fit(X_train_scaled_df, y)
+    
     ensemble_model_data = {
         'model': ensemble_model,
         'scaler': scaler,
@@ -97,7 +100,7 @@ def train_model():
     }
     
     # Calculate and print training accuracy
-    train_accuracy = ensemble_model_data['model'].score(X_train_scaled, y)
+    train_accuracy = ensemble_model_data['model'].score(X_train_scaled_df, y)
     print(f"Training accuracy: {train_accuracy:.4f}")
     
     # Save the model and scaler

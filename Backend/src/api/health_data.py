@@ -43,7 +43,7 @@ try:
         feature_names = model_data['feature_names']
         
         logger.info("Model components loaded successfully")
-        logger.info(f"Feature names: {model.key()}")
+        logger.info(f"Feature names: {feature_names}")
         logger.info(f"Model type: {type(model)}")
 
 
@@ -57,7 +57,8 @@ except Exception as e:
 
 class HealthDataInput(BaseModel):
     model_config = ConfigDict(title="Health Data Input")
-    BMI: Annotated[float, Field(ge=0)]
+    Height: Annotated[float, Field(ge=0)]
+    Weight: Annotated[float, Field(ge=0)]
     Stroke: Annotated[int, Field(ge=0, le=1)]
     HeartDiseaseorAttack: Annotated[int, Field(ge=0, le=1)]
     Sex: Annotated[int, Field(ge=0, le=1)]
@@ -89,28 +90,28 @@ async def predict_diabetes_risk(
                 detail="Model not loaded. Please ensure the model is trained and available."
             )
         
+        # Calculate BMI from height and weight
+        height_m = health_data.Height / 100  # Convert cm to m
+        bmi = health_data.Weight / (height_m * height_m)
+        
         # Convert input data to DataFrame with correct feature order
         input_data = np.array([[
-            health_data.BMI,
+            bmi,  # Calculate BMI from height and weight
             health_data.Stroke,
             health_data.HeartDiseaseorAttack,
             health_data.Sex,
             health_data.Age
         ]])
-        input_data = pd.DataFrame(input_data, columns=feature_names)
-        X_test_match_lebel = pd.DataFrame()
-        X_test_match_lebel['BMI'] = input_data['BMI']
-        X_test_match_lebel['Stroke'] = input_data['Stroke']
-        X_test_match_lebel['HeartDiseaseorAttack'] = input_data['HeartDiseaseorAttack']
-        X_test_match_lebel['Sex'] = input_data['Sex']
-        X_test_match_lebel['Age'] = input_data['Age']
-        X_test_match_lebel = scaler.fit_transform(X_test_match_lebel)
+        input_df = pd.DataFrame(input_data, columns=feature_names)
+        
         # Scale the input data using pre-trained scaler
-        scaled_data = scaler.transform(X_test_match_lebel)
+        scaled_data = scaler.transform(input_df)
+        # Convert scaled data back to DataFrame with feature names
+        scaled_df = pd.DataFrame(scaled_data, columns=feature_names)
         
         # Get prediction probabilities from model
-        predictions = model.predict(scaled_data)
-        probabilities = model.predict_proba(scaled_data)[0]
+        predictions = model.predict(scaled_df)
+        probabilities = model.predict_proba(scaled_df)[0]
         
         # Get feature importance
         estimators = model.estimators_
@@ -144,7 +145,8 @@ async def predict_diabetes_risk(
             risk_level=risk_level,
             confidence_score=confidence_score,
             feature_importance=feature_importance,
-            input_data=health_data.model_dump()
+            input_data=health_data.model_dump(),
+            created_at=datetime.now().astimezone()  # Store with timezone info
         )
         
         # Store prediction in database
@@ -153,6 +155,7 @@ async def predict_diabetes_risk(
         )
         
         return RiskPredictionResponse(
+            id=str(result.inserted_id),
             risk_probability=risk_probability,
             risk_level=risk_level,
             confidence_score=confidence_score,
