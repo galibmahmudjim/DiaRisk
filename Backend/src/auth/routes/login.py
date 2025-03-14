@@ -6,13 +6,18 @@ from src.auth.services.google_auth import GoogleAuthService
 from src.auth.services.token import TokenService
 from src.models.user import User
 from src.auth.utils import get_current_user
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+class GoogleUserInfo(BaseModel):
+    email: str
+    name: str
+    photo_url: str | None = None
+
 @router.get("/me")
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """Get current user information using access token"""
     try:
         return {
             "status": "success",
@@ -172,6 +177,43 @@ async def callback(
         raise
     except Exception as e:
         logger.error(f"Error in callback route: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication error"
+        )
+
+@router.post("/google-auth")
+async def google_auth(user_info: GoogleUserInfo):
+    """Handle client-side Google authentication"""
+    try:
+        # Create or update user
+        user = await GoogleAuthService.create_or_update_user({
+            "email": user_info.email,
+            "name": user_info.name,
+            "picture": user_info.photo_url,
+        })
+        
+        # Generate access token
+        access_token = TokenService.create_access_token(user.email)
+        
+        return {
+            "status": "success",
+            "data": {
+                "access_token": access_token,
+                "token_type": "bearer",
+                "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+                "user": {
+                    "email": user.email,
+                    "name": user.name,
+                    "picture": user.picture,
+                    "is_active": user.is_active,
+                    "created_at": user.created_at.isoformat() if user.created_at else None
+                }
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in google-auth route: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Authentication error"

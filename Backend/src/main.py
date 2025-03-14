@@ -4,9 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from fastapi import Request
-from fastapi.openapi.utils import get_openapi
-from src.auth.utils import security
+from fastapi import Request, APIRouter
 from contextlib import asynccontextmanager
 
 from src.core.database import db
@@ -17,10 +15,8 @@ import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     await db.connect_to_database()
     yield
-    # Shutdown
     await db.close_database_connection()
 
 app = FastAPI(
@@ -28,10 +24,10 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     swagger_ui_parameters={"persistAuthorization": True},
-    lifespan=lifespan
+    lifespan=lifespan,
+    description="DiaRisk API with Bearer token authentication"
 )
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -40,39 +36,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
-
-    openapi_schema = get_openapi(
-        title=settings.PROJECT_NAME,
-        version=settings.VERSION,
-        description="DiaRisk API with Bearer token authentication",
-        routes=app.routes,
-    )
-
-    # Add Bearer Auth security scheme
-    # openapi_schema["components"] = {
-    #     "securitySchemes": {
-    #         "Authorization": {
-    #             "type": "http",
-    #             "scheme": "bearer"
-    #         }
-    #     }
-    # }
-
-    # Apply security globally to all routes
-    # openapi_schema["security"] = [{"Authorization": []}]
-
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-app.openapi = custom_openapi
-
-# Templates
 templates = Jinja2Templates(directory="templates")
 
-# Include routers
+# Auth routes
 app.include_router(
     login_router,
     prefix=f"{settings.API_V1_STR}/auth",
@@ -84,17 +50,11 @@ app.include_router(
     tags=["auth"]
 )
 
-# Create a separate router for prediction endpoint
-from fastapi import APIRouter
-predict_router = APIRouter()
-predict_router.include_router(health_router, prefix="", tags=["prediction"])
-
-# Mount authenticated health endpoints
+# Public prediction route
 app.include_router(
     health_router,
     prefix=f"{settings.API_V1_STR}/health",
-    tags=["health"],
-    dependencies=[Depends(security)]
+    tags=["prediction"]
 )
 
 @app.get("/", response_class=HTMLResponse)

@@ -9,10 +9,7 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 async def get_current_user(credentials = Depends(security)):
-    """
-    Get current user from access token
-    Token format should be: Bearer <access_token>
-    """
+
     try:
         token = credentials.credentials
         token_data = TokenService.verify_token(token)
