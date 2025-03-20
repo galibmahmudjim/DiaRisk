@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../Model/sharedPref.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:logger/logger.dart';
 
@@ -95,7 +96,8 @@ class _HomePageState extends State<HomePage>
           // Update timeline labels based on actual dates
           timelineLabels.clear();
           timelineLabels.addAll(predictionData.map((prediction) =>
-              '${prediction.date.toLocal().add(Duration(hours: 6)).day} ${DateFormat('MMM').format(prediction.date.toLocal().add(Duration(hours: 6)))}'));
+              DateFormat('MMM dd\nyyyy')
+                  .format(prediction.date.toLocal().add(Duration(hours: 6)))));
         });
       } else {
         print('Failed to fetch prediction data: ${response.statusCode}');
@@ -395,8 +397,8 @@ class _HomePageState extends State<HomePage>
               SizedBox(height: 20),
               // Graph container with fixed height
               Container(
-                height: 200,
-                padding: EdgeInsets.all(16),
+                height: 250,
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 42),
                 child: Row(
                   children: [
                     // Y-axis labels
@@ -432,7 +434,7 @@ class _HomePageState extends State<HomePage>
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: SizedBox(
-                          width: width * 3,
+                          width: max(width * 2, predictionData.length * 60.0),
                           child: LineChart(
                             LineChartData(
                               gridData: FlGridData(
@@ -459,24 +461,31 @@ class _HomePageState extends State<HomePage>
                                 bottomTitles: AxisTitles(
                                   sideTitles: SideTitles(
                                     showTitles: true,
-                                    interval: 30,
+                                    interval: 1,
+                                    reservedSize: 42,
                                     getTitlesWidget: (value, meta) {
                                       const style = TextStyle(
                                         color: Colors.grey,
-                                        fontSize: 10,
+                                        fontSize: 8,
                                       );
                                       Widget text;
                                       if (value.toInt() >= 0 &&
                                           value.toInt() <
                                               timelineLabels.length) {
-                                        text = Text(
+                                        text = RotatedBox(
+                                          quarterTurns: 1,
+                                          child: Text(
                                             timelineLabels[value.toInt()],
-                                            style: style);
+                                            style: style,
+                                            textAlign: TextAlign.left,
+                                          ),
+                                        );
                                       } else {
                                         text = const Text('');
                                       }
                                       return SideTitleWidget(
                                         axisSide: meta.axisSide,
+                                        space: 8,
                                         child: text,
                                       );
                                     },

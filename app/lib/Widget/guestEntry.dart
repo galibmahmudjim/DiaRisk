@@ -1,4 +1,4 @@
-import 'package:droptel/Model/Mongodb.dart';
+
 import 'package:droptel/Model/sharedPref.dart';
 import 'package:droptel/Obj/User.dart';
 import 'package:droptel/Pages/homepage.dart';
@@ -114,27 +114,8 @@ class _GuestWidgetState extends State<GuestWidget> {
                 );
                 await sharedPref.setID(id);
                 await sharedPref.setName(nameController.text);
-                Future<dynamic> newuser = Mongodb.NewUser(user);
                 bool flag = true;
-                newuser.timeout(Duration(seconds: 2), onTimeout: () {
-                  widget.callback(false);
-                  snackBar(context, "Please check your internet connection",
-                      Colors.red);
-                  setState(() {
-                    flag = false;
-                  });
-                });
-                newuser.then((value) {
-                  if (value != null && flag == true) {
-                    widget.callback(false);
-                    Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => HomePage(
-                                  user: user,
-                                )));
-                  }
-                });
+                
               } else {
                 if (nameError.isNotEmpty) {
                   setState(() {

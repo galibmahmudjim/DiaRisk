@@ -8,7 +8,7 @@ import '../Pages/homepage.dart';
 
 class HealthDataService {
   static final HealthDataService _instance = HealthDataService._internal();
-  factory HealthDataService() => _instance;
+  factory HealthDataService() => _instance; 
   final logger = Logger();
   HealthDataService._internal();
 
